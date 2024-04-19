@@ -1,6 +1,7 @@
 "use strict";
 
-const { uniqueId } = require("lodash");
+const { v4: uuidv4 } = require("uuid");
+const { LRUCache } = require("lru-cache");
 
 // Print all entries, across all of the *async* sources, in chronological order.
 async function nextEntry(source) {
@@ -11,28 +12,26 @@ async function nextEntry(source) {
 
 // Print all entries, across all of the sources, in chronological order.
 async function printLogEntries(logSources, printer) {
-  // we might hit the entry several times so cache it
-  const cachedEntries = {};
+  // Create an LRU cache with a maximum size of 1000 entries
+  const cache = new LRUCache({ max: 1000 });
 
   async function getOldestSource(sources) {
     let oldestSource = null;
     let oldestEntry = null;
     // merge-sort
     for (const source of sources) {
+      const cacheKey = source.id;
       // pop is being created depending if random time over current date
-      const entry = source.id
-        ? cachedEntries[source.id].pop()
-        : await nextEntry(source);
+      const entry = cacheKey ? cache.get(cacheKey) : await nextEntry(source);
       if (entry) {
         if (!oldestEntry || entry.date < oldestEntry.date) {
           oldestEntry = entry;
           oldestSource = source;
         } else {
-          if (!source.id) {
-            source.id = uniqueId();
-            cachedEntries[source.id] = [];
+          if (!cacheKey) {
+            source.id = uuidv4();
           }
-          cachedEntries[source.id].push(entry);
+          cache.set(cacheKey, entry);
         }
       }
     }
